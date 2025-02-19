@@ -1,6 +1,6 @@
 # btexec
 
-[Blog post](https://www.synercomm.com/executing-shellcode-via-bluetooth-device-authentication/)
+[Blog post](https://blog.shellntel.com/p/executing-shellcode-via-bluetooth-device-authentication)
 
 In offices and coffee shops, there are likely going to be many Bluetooth devices nearby like TVs, headphones, speakers, etc. Why not use them to execute shellcode? Btexec is a shellcode loader that triggers a nearby Bluetooth device to silently authenticate to the users machine, which will execute the shellcode.
 
